@@ -315,7 +315,7 @@ maps_function<-function(current_Out_Dir,RCPs,GCMS,PERIODS,sp_name2,countries){
     xy<-lapply(1:length(PERIODS),function(j){
       PERIOD<-PERIODS[[j]]
       
-      RCP_out_dir<-paste0(out_dir,"/",RCP)
+      RCP_out_dir<-paste0(out_dir,"/","ensemble","/",RCP)
       PERIOD_out_dir<-paste0(RCP_out_dir,"/",PERIOD)
       
       x<-raster(paste0(PERIOD_out_dir,"/","MCAA_FINAL_THR.tif"))
@@ -331,7 +331,7 @@ maps_function<-function(current_Out_Dir,RCPs,GCMS,PERIODS,sp_name2,countries){
   RCP_AREAS_MAPS<-c(bl_prob_thr_mask,RCP_AREAS_MAPS)
   RCP_AREAS_MAPS<-stack(RCP_AREAS_MAPS)
   ############
-  
+  xy<-RCP_AREAS_MAPS[[1]]
   ####
   
   map.p <- as.data.frame(rasterToPoints(RCP_AREAS_MAPS))
@@ -422,7 +422,7 @@ maps_function<-function(current_Out_Dir,RCPs,GCMS,PERIODS,sp_name2,countries){
   RCP_AREAS_MAPS_NO_MIG<-c(bl_prob_thr_mask,RCP_AREAS_MAPS_NO_MIG)
   RCP_AREAS_MAPS_NO_MIG<-stack(RCP_AREAS_MAPS_NO_MIG)
   ############
-  
+  xy<-RCP_AREAS_MAPS_NO_MIG[[i]]
   ####
   
   map.p <- as.data.frame(rasterToPoints(RCP_AREAS_MAPS_NO_MIG))

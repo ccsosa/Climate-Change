@@ -12,9 +12,7 @@ library(raster)
 library(rgdal)
 library(rJava)
 library(dismo)
-library(maptools)
 
-data(wrld_simpl)
 ##########################################################
 ##PREVIOUS STEPS##
 ##########################################################
@@ -45,7 +43,7 @@ x<-swd_function(inDir=inDir,current_clim_dir=current_clim_dir,occ_Dir=occ_Dir,bg
 ##########################################################
   
 occs<-list.files(paste0(inDir,"/","_swd"),".csv")
-occFile<-paste0(bacK_Dir,"/",occs[[2]])
+occFile<-paste0(bacK_Dir,"/",occs[[1]])
 sp_name<-sub(bacK_Dir,"",occFile)
 sp_name<-sub("/","",sp_name)
 sp_name<-sub(".csv","",sp_name)
@@ -88,7 +86,7 @@ Eval_sp_Dir<-paste0(sp_Dir,"/","evaluation");if(!file.exists(Eval_sp_Dir)){dir.c
 
 #setwd(dir =sp_Dir )
 current_Out_Dir<-paste0(sp_Dir,"/","current");if(!file.exists(current_Out_Dir)){dir.create(current_Out_Dir)}
-set.seed(1000)
+#set.seed(1000)
 ##########################################################
 if(!file.exists(paste0(sp_Dir,"/","sdm.sdm"))){
 d <- sdm::sdmData(train=spData_presence,
@@ -147,9 +145,14 @@ mInfo<-getModelInfo(m2)
 ##########################################################
 #NULL MODEL
 
+
+if(!file.exists(paste0(Eval_sp_Dir,"/","metrics.csv"))){
 source(paste0(src.dir,"/","_null_model.R"))
 nAUC<-nullModel_calculate(spData_presence=spData_presence,current_clim_layer=current_clim_layer);gc()
-
+}else{
+  cat("Already modelled! OMMITING NULL MODEL","\n")  
+  
+}
 ##########################################################
 ###WRITING RASTER FILES TO PERFORM EVALUATION ANALYSIS
 #########################################################
@@ -191,8 +194,12 @@ write.csv(evaluation,paste0(Eval_sp_Dir,"/","metrics.csv"),quote=F,row.names=F)
   evaluation<-read.csv(paste0(Eval_sp_Dir,"/","metrics.csv"),header=T)
 }
 
+if(sum(evaluation$valid_model)==0){
 source(paste0(src.dir,"/","_evaluation_replicates.R"))
 models_to_ensemble_MOD<-as.character(evaluation$METHOD[which(evaluation$valid_model==1)])
+
+#if(!file.exists(paste0(Eval_sp_Dir,"/","metrics.csv"))){
+  
 
 
 m2_rep<-m2_rep_function(mInfo)
@@ -201,7 +208,7 @@ models_to_ensemble<-as.numeric(m2_rep$modelID[which(m2_rep$valid_model==1)])
 source(paste0(src.dir,"/","00_evaluation_PCA.R"))
 
 
-rm(p2m,p2m_all)
+#rm(p2m,p2m_all)
 ##########################################################
 ###ENSAMBLING APPROACHES
 ######################################################## 
@@ -209,8 +216,12 @@ rm(p2m,p2m_all)
 #CURRENT
 source(paste0(src.dir,"/","_evaluation_ens.R"))
 sp_Dir<-current_Out_Dir
-x<-eval_to_ens(models_to_ensemble,m2_eval,sp_Dir,mInfo,m2_rep,p2m_all);gc()
 
+if(!file.exists(paste0(current_Out_Dir,"/","MCAA_FINAL_THR.tif"))){
+x<-eval_to_ens(models_to_ensemble,m2_eval,sp_Dir,mInfo,m2_rep,p2m_all);gc()
+}else{
+  cat("Baseline already projected!","\n")
+}
 
 ##########################################################
 ###DEFINING RCPs
@@ -251,6 +262,7 @@ source(paste0(src.dir,"/","mclapply2.R"))
 ######################################################## 
 #rm(sp_Dir)
 #sp_Dir_Original
+if(!file.exists(paste0(sp_Dir_Original,"/","ensemble"))){
 for(k in 1:length(RCPs)){
   
   cat("Projecting for: ",as.character(RCPs[[k]]),"\n")
@@ -264,6 +276,10 @@ mclapply2(1:length(GCMS),function(j){
     })
   }) 
 };
+
+}else{
+  cat("Already projected!","\n")
+}
 ##########################################################
 ###ENSEMBLING APPROACH PER RCP
 ######################################################## 
@@ -271,7 +287,8 @@ mclapply2(1:length(GCMS),function(j){
 ###RUNNING FOR GCM AND PERIODS 3 cores|3 cores| 2 core
 ###USING 18 CORES!
 ######################################################## 
-
+if(!file.exists(paste0(sp_Dir_Original,"/","Graphics"))){
+  
 source(paste0(src.dir,"/","_ensemble_final.R"))
 
 for(i in 1:length(RCPs)){
@@ -284,10 +301,15 @@ for(i in 1:length(RCPs)){
 x<-ensemble_RCP_function(mod_Dir,sp_name,sp_Dir_Original,RCP=RCPs[[i]],PERIOD=PERIODS[[j]],GCMS=GCMS)
   })
 };rm(i)
-
+}else{
+  
+  cat("Already ensembled!","\n")
+}
 ##########################################################
 ###NO MIGRATION SCENARIO FOR RCP
 ######################################################## 
+if(!file.exists(paste0(sp_Dir_Original,"/","Graphics"))){
+  
 source(paste0(src.dir,"/","_No_migration_Scenario.R"))
 
   for(k in 1:length(RCPs)){
@@ -316,7 +338,10 @@ for(k in 1:length(RCPs)){
 x<-No_migration_RCP_function(mod_Dir,sp_name,sp_Dir_Original,RCP=RCPs[[k]],PERIOD=PERIODS[[i]],models_to_ensemble_MOD,current_Out_Dir)
   })
 };rm(i) 
-
+}else{
+  
+  cat("Already ensembled!","\n")
+}
 ##########################################################
 ###CALCULATING STEPWISE
 
@@ -335,7 +360,7 @@ x<-RCP_ENSEMBLE_AFFECTED_AREAS(sp_Dir_Original,RCPs,PERIODS,current_Out_Dir)
 
 ########################################################## 
 ###FINAL MAPS
-sp_name2<-"Brachiaria decumbens"
+sp_name2<-"Brachiaria brizantha"
 countries<-c("Colombia", "Ecuador", "Peru","Venezuela","Brazil","Bolivia")
 
 source(paste0(src.dir,"/","_maps.R"))
@@ -346,4 +371,7 @@ x<-maps_function(current_Out_Dir,RCPs,GCMS,PERIODS,sp_name2,countries)
 
 source(paste0(src.dir,"/","_maps_affected_areas.R"))
 
-x<-maps_function_af_areas<-function(sp_Dir_Original,RCPs,GCMS,PERIODS,sp_name2,countries,current_Out_Dir) 
+x<-maps_function_af_areas(sp_Dir_Original,RCPs,GCMS,PERIODS,sp_name2,countries,current_Out_Dir) 
+}else{
+cat("NO VALID MODELS, FINISHING THE SCRIPT!")
+}

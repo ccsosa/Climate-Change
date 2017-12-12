@@ -208,9 +208,9 @@ write.csv(AFFECTED_AREAS_MIG_list_csv,paste0(graphics_dir,"/","AFFECTED_AREAS_MI
 ####################################################################################################################
   #CALLING CLIMATE LAYERS
   
-  RCP_dir<-paste0(grid_dir,"/",RCP)
+  RCP_dir<-paste0(grid_dir,"/",RCPs)
   #GCM_dir<-paste0(RCP_dir,"/",GCM)
-  PERIOD_dir<-paste0(GCM_dir,"/",PERIOD)
+  PERIOD_dir<-paste0(GCM_dir,"/",PERIODS)
   
 #########################################################
 #PREPARING SCENARIOS TO BE ANALYZED

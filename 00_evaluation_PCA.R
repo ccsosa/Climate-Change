@@ -1,4 +1,9 @@
-require(FactoMineR);require(ggplot2);library(ggfortify);require(scales)
+require(FactoMineR);require(ggplot2);require(scales);require(purrr)
+library(ggfortify)
+#library(devtools)
+#install_github('sinhrks/ggfortify')
+
+library(ggfortify)
 
 PCA_EVAL_FUNCTION<-function(mInfo,m2_eval){
   
