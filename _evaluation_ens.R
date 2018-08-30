@@ -74,11 +74,17 @@ p2m_ens_to_2<-lapply(1:length(models_to_ensemble_MOD),function(i){
       length(models_to_ensemble_MOD),
       " Valid algorithms!",
       "\n")
+  if(length(models_to_ensemble_MOD)==1){
+#    X<-grep(models_to_ensemble_MOD[[i]],names(p2m_quantile2))
+    p<-sum(p2m_quantile2,na.rm=T)/nlayers(p2m_quantile2)
+    
+     } else {
+       X<-grep(models_to_ensemble_MOD[[i]],names(p2m_quantile2))
+      
+       p<-sum(p2m_quantile2[[X]],na.rm=T)/length(X)
+  }
   
-  X<-grep(models_to_ensemble_MOD[[i]],names(p2m_quantile2))
-  
-  p<-sum(p2m_quantile2[[X]],na.rm=T)/length(X)
-  
+   
   names(p)<-as.character(paste0(models_to_ensemble_MOD[[i]]),"_","MCAA")
   cat(names(p)," DONE!","\n")
   return(p)

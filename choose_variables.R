@@ -22,7 +22,7 @@ nipals_by_specie =function(x){
   
   
 y<-data.frame(x)
-y<- y[,paste0("bio",1:19)]
+y<- y[,paste0("bio_",1:19)]
   
 cat("processing NIPALS ","\n")
   if(nrow(y)>4){

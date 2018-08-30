@@ -2,7 +2,7 @@ require(parallel)
 mclapply2 <- function(...) {
   ## Create a cluster
   size.of.list <- length(list(...)[[1]])
-  cl <- makeCluster( min(size.of.list, 3) )
+  cl <- makeCluster( min(size.of.list, 2) )
   
   ## Find out the names of the loaded packages 
   loaded.package.names <- c(

@@ -7,42 +7,48 @@
 ####################################################################################################################
 ####################################################################################################################
 ####################################################################################################################
-library(sdm)
+
 library(raster)
 library(rgdal)
 library(rJava)
 library(dismo)
+library(sdm)
+library(parallel)
+library(devtools)
+#install_github('johnbaums/rmaxent')
 
+library(rmaxent)
 ##########################################################
 ##PREVIOUS STEPS##
 ##########################################################
 
-inDir<-"V:/07_Maxent"
-bacK_Dir<-paste0(inDir,"/","_swd");if(!file.exists(bacK_Dir)){dir.create(bacK_Dir)}
+inDir<-"//dapadfs/workspace_cluster_6/CWR/CWR_PROJECT_CC_BD/ccsosa/CLIMATE_CHANGE"
+bacK_Dir<-paste0(inDir,"/","swd");if(!file.exists(bacK_Dir)){dir.create(bacK_Dir)}
 occ_Dir<-paste0(inDir,"/","_occurrences");if(!file.exists(occ_Dir)){dir.create(occ_Dir)}
-src.dir<-"V:/07_Maxent/_scripts" 
+src.dir<-paste0(inDir,"/","scripts/Climate-Change") 
 mod_Dir<-paste0(inDir,"/","_modelling");if(!file.exists(mod_Dir)){dir.create(mod_Dir)}
 
 ##########################################################
 ###BASELINE DIRECTORY
 ##########################################################
 
-input_dir<-"V:/02_Gridded_data"
-bl_dir<-paste0(input_dir,"/","baseline_2_5min_v2/average")
-current_clim_dir<-paste0(bl_dir,"/","biovars");if(!file.exists(paste0(bl_dir,"/","biovars"))){dir.create(paste0(bl_dir,"/","biovars"))}
+input_dir <- "//dapadfs/workspace_cluster_6/CWR/CWR_PROJECT_CC_BD/ccsosa/CLIMATE_CHANGE/biolayers"
+bl_dir <- paste0(input_dir,"/","current")
+#current_clim_dir<-paste0(bl_dir,"/","biovars");if(!file.exists(paste0(bl_dir,"/","biovars"))){dir.create(paste0(bl_dir,"/","biovars"))}
+current_clim_dir <- bl_dir#;if(!file.exists(paste0(bl_dir,"/","biovars"))){dir.create(paste0(bl_dir,"/","biovars"))}
 
 ##########################################################
 ###SWD FILES CREATING
 ##########################################################
 
 source(paste0(src.dir,"/","_swd.R"))
-x<-swd_function(inDir=inDir,current_clim_dir=current_clim_dir,occ_Dir=occ_Dir,bg_create=F)
+#x<-swd_function(inDir=inDir,current_clim_dir=current_clim_dir,occ_Dir=occ_Dir,bg_create=T)
   
 ##########################################################
 ###CALLING SWD FILES
 ##########################################################
   
-occs<-list.files(paste0(inDir,"/","_swd"),".csv")
+occs<-list.files(paste0(inDir,"/","swd"),".csv")
 occFile<-paste0(bacK_Dir,"/",occs[[1]])
 sp_name<-sub(bacK_Dir,"",occFile)
 sp_name<-sub("/","",sp_name)
@@ -54,12 +60,17 @@ spData <- read.csv(occFile)
 spData<-spData[,-c(1:3)]
 spData_presence<-spData[which(spData$status==1),]
 
+
+
 ##########################################################
 ###SWD TO SPATIALPOINTDATAFRAME
 ##########################################################
 
 coordinates(spData_presence)<-~lon+lat
 crs(spData_presence)<-"+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+## No spatial duplicates
+spData_presence <- remove.duplicates(spData_presence)
+
 
 ##########################################################
 ###CHOOSE VARIABLES USING NIPALS
@@ -72,8 +83,8 @@ var_cho<-nipals_by_specie(spData_presence)
 current_clim_layer<-lapply(paste0(current_clim_dir,"/","/",paste0(var_cho,".tif")),raster)
 current_clim_layer<-stack(current_clim_layer)
 
-spData_presence<-spData_presence[,c("status",var_cho)]
-
+spData_presence <- spData_presence[,c("status",var_cho)]
+colnames(spData_presence@data)[1] <- "Sp"
 ##########################################################
 ###FORMATTING TO SDM PACKAGE FORMAT 
 ##########################################################
@@ -89,7 +100,9 @@ current_Out_Dir<-paste0(sp_Dir,"/","current");if(!file.exists(current_Out_Dir)){
 #set.seed(1000)
 ##########################################################
 if(!file.exists(paste0(sp_Dir,"/","sdm.sdm"))){
-d <- sdm::sdmData(train=spData_presence,
+  frm <- as.formula(paste("Sp", "~", paste(names(current_clim_layer), sep = "+", collapse = "+"), "+coords(lon+lat)", sep = ""))
+  
+  data_sp_f <- sdm::sdmData(formula=frm,train=spData_presence,
                  #predictors=as.data.frame(spData_presence[,var_cho]),
                  predictors=current_clim_layer,
                     #bg=as.data.frame(spData_pseudo@coords))
@@ -102,14 +115,21 @@ cat("Already modelled!","\n")
 ##########################################################
 ###PERFORMING 5 SDMs ALGORITHMS
 ##########################################################
+
+#m2@models$Sp$maxent$`1`@object
+
+
+
 if(!file.exists(paste0(sp_Dir,"/","sdm.sdm"))){
-m2 <- sdm(status~.,data=d,methods=c('rf','brt','svm','glm','maxent'),
-          replicatin='cv',
+m2 <- sdm(frm,data=data_sp_f,methods='maxent',#c('rf','brt','svm','glm','maxent'),
+          replication='cv',
           test.percent=20,
-          n=5,
-          var.selection=T,
-          overwrite=F,
-          nc=5);gc()
+          n=3,
+          modelSettings = list(maxent = list(args='hinge=false', 'threshold=false')),
+          var.selection=F,
+          overwrite=F#,
+          #nc=4
+          );gc()
 
 write.sdm(m2,paste0(sp_Dir,"/","sdm"))
 
@@ -140,7 +160,7 @@ m2_eval<-getEvaluation(m2,opt=4, stat=c('AUC',
 ##########################################################
 #GETTING EVALUATION INFO
 
-mInfo<-getModelInfo(m2)
+mInfo<-sdm::getModelInfo(m2)
 
 ##########################################################
 #NULL MODEL
@@ -157,26 +177,63 @@ nAUC<-nullModel_calculate(spData_presence=spData_presence,current_clim_layer=cur
 ###WRITING RASTER FILES TO PERFORM EVALUATION ANALYSIS
 #########################################################
 
-if(!file.exists(paste0(current_Out_Dir,"/","current.img"))){
-  p2m <- predict(m2,newdata=current_clim_layer,filename=paste0(current_Out_Dir,"/","current.img"),nc=5,mean=T,overwrite=T);gc()
-  names(p2m)<-unique(mInfo$method)
-  
-  }else{
-  p2m<-stack(brick(paste0(current_Out_Dir,"/","current.img")))
-  names(p2m)<-unique(mInfo$method)
-}
 if(!file.exists(paste0(current_Out_Dir,"/","current_all.img"))){
-  
-p2m_all <- predict(m2,newdata=current_clim_layer,filename=paste0(current_Out_Dir,"/","current_all.img"),nc=5,mean=F,overwrite=F);gc()
+  p2m_all <- lapply(1:nrow(m2_eval),function(i){
+  cat(i)
+  x <- pred_rmaxent <- rmaxent::project(m2@models$Sp$maxent[[i]]@object, current_clim_layer)
+  x <- x$prediction_logistic
+return(x)
+    })
+#detach("package:caret",unload = T)
+# p2m <- predict(object=m2,
+#                    newdata=current_clim_layer,
+#                    w=1,
+#                    filename=paste0(current_Out_Dir,"/","cur1.tif"),
+#                    method="maxent",
+#                    mean=F,
+#                    overwrite=F,
+#                    nc=5,
+#                    object.size=50
+#                   ) 
+#   
+   #p2m<-stack(brick(paste0(current_Out_Dir,"/","cur.img")))
+  p2m_all <- stack(p2m_all)
 names(p2m_all)<-paste0(mInfo$method,"_",mInfo$modelID)
-
-}else{
-  p2m_all<-stack(brick(paste0(current_Out_Dir,"/","current_all.img")))
-  names(p2m)<-unique(mInfo$method)
-  
+writeRaster(p2m_all,paste0(current_Out_Dir,"/","current_all.img"));gc()
+} else {
+  p2m_all<-stack(brick(paste0(current_Out_Dir,"/","current_all.img")))  
   names(p2m_all)<-paste0(mInfo$method,"_",mInfo$modelID)
   
 }
+
+if(!file.exists(paste0(current_Out_Dir,"/","current.img"))){
+
+#p2m_all <- predict(m2,newdata=current_clim_layer,filename=paste0(current_Out_Dir,"/","current_all.img"),nc=5,mean=F,overwrite=T);gc()
+p2m <- mean(p2m_all,na.rm=T);gc()  #calc(p2m_all, median)#median(p2m_all,na.rm=T);gc()
+writeRaster(p2m,paste0(current_Out_Dir,"/","current.img"))
+}else{
+  p2m <- raster(paste0(current_Out_Dir,"/","current.img"))
+  names(p2m)<-unique(mInfo$method)
+
+}
+
+# if(!file.exists(paste0(current_Out_Dir,"/","current_all.img"))){
+#   p2m_all <- predict(m2,newdata=current_clim_layer,filename=paste0(current_Out_Dir,"/","current_all.img"),method=("maxent"),nc=5,mean=T,overwrite=T);gc()
+#   names(p2m_all)<-paste0(mInfo$method,"_",mInfo$modelID) 
+#   }else{
+#   p2m_all<-stack(brick(paste0(current_Out_Dir,"/","current_all.img")))
+#   names(p2m_all)<-paste0(mInfo$method,"_",mInfo$modelID) 
+# }
+# if(!file.exists(paste0(current_Out_Dir,"/","current.img"))){
+#   
+# #p2m_all <- predict(m2,newdata=current_clim_layer,filename=paste0(current_Out_Dir,"/","current_all.img"),nc=5,mean=F,overwrite=T);gc()
+# p2m <- mean(p2m_all,na.rm=T)
+# writeRaster(p2m,paste0(current_Out_Dir,"/","current.img"))
+# }else{
+#   p2m <- raster(paste0(current_Out_Dir,"/","current.img"))
+#   names(p2m)<-unique(mInfo$method)
+#   
+# }
 
 
 
@@ -194,7 +251,7 @@ write.csv(evaluation,paste0(Eval_sp_Dir,"/","metrics.csv"),quote=F,row.names=F)
   evaluation<-read.csv(paste0(Eval_sp_Dir,"/","metrics.csv"),header=T)
 }
 
-if(sum(evaluation$valid_model)==0){
+#if(sum(evaluation$valid_model)>0){
 source(paste0(src.dir,"/","_evaluation_replicates.R"))
 models_to_ensemble_MOD<-as.character(evaluation$METHOD[which(evaluation$valid_model==1)])
 
@@ -214,40 +271,35 @@ source(paste0(src.dir,"/","00_evaluation_PCA.R"))
 ######################################################## 
 
 #CURRENT
-source(paste0(src.dir,"/","_evaluation_ens.R"))
+#source(paste0(src.dir,"/","_evaluation_ens.R"))
 sp_Dir<-current_Out_Dir
 
 if(!file.exists(paste0(current_Out_Dir,"/","MCAA_FINAL_THR.tif"))){
-x<-eval_to_ens(models_to_ensemble,m2_eval,sp_Dir,mInfo,m2_rep,p2m_all);gc()
-}else{
+#x<-eval_to_ens(models_to_ensemble,m2_eval,sp_Dir,mInfo,m2_rep,p2m_all);gc()
+  p_raster <- p2m
+  p_raster[which(p_raster[]>=median(m2_eval$threshold))]<-1
+  p_raster[which(p_raster[]<median(m2_eval$threshold))]<-0
+  
+  writeRaster(p2m,paste0(sp_Dir,"/","MCAA_FINAL",".tif"))
+  writeRaster(p_raster,paste0(sp_Dir,"/","MCAA_FINAL_THR",".tif"))
+  }else{
   cat("Baseline already projected!","\n")
 }
-
+  gc()
 ##########################################################
 ###DEFINING RCPs
 ######################################################## 
-RCPs<-c("rcp26","rcp45","rcp60","rcp85")
-PERIODS<-c("2020_2049","2040_2069")
-GCMS<-c("bcc_csm1_1",
-        "bcc_csm1_1_m",
-        "cesm1_cam5",
-        "csiro_mk3_6_0",
-        "fio_esm",
-        "gfdl_cm3",       
-        "giss_e2_r",      
-        "ipsl_cm5a_lr",
-        "miroc_esm", 
-        "miroc_esm_chem",
-        "miroc_miroc5",
-        "mohc_hadgem2_es",
-        "mri_cgcm3",
-        "ncar_ccsm4",
-        "ncc_noresm1_m",
-        "nimr_hadgem2_ao"
-)
-  
-grid_dir<-"V:/03_Future_data/downscaling_bsl_2_5min_v1"
+RCPs<-c("rcp2_6","rcp4_5","rcp6_0","rcp8_5")
 
+PERIODS<-c("2050s") #,"2080s"
+
+grid_dir<-"//dapadfs/workspace_cluster_6/CWR/CWR_PROJECT_CC_BD/ccsosa/CLIMATE_CHANGE/biolayers"
+
+GCMS_lists <- lapply(1:length(RCPs),function(a){
+  GCMS<-as.character(list.dirs(paste0(grid_dir,"/",RCPs[[a]],"/",PERIODS[[1]]),
+                               full.names = F,recursive = F)
+  )
+})
 # RCP<-RCPs[[1]]
 # GCM<-GCMS[[1]]
 # PERIOD<-PERIODS[[1]]
@@ -261,25 +313,34 @@ source(paste0(src.dir,"/","mclapply2.R"))
 ###USING 18 CORES!
 ######################################################## 
 #rm(sp_Dir)
-#sp_Dir_Original
+
 if(!file.exists(paste0(sp_Dir_Original,"/","ensemble"))){
+  #sp_Dir_Original
+
+   
 for(k in 1:length(RCPs)){
-  
+  GCMS <- GCMS_lists[[k]]
   cat("Projecting for: ",as.character(RCPs[[k]]),"\n")
-  
-mclapply2(1:length(GCMS),function(j){
-  
+
+  #lapply(1:length(GCMS),function(j){
+  mclapply2(1:length(GCMS),function(j){
+  #lapply(1:length(PERIODS),function(i){
+    
   mclapply2(1:length(PERIODS),function(i){
+    
   
     x<-projection_function(input_dir,RCP=RCPs[[k]],GCM=GCMS[[j]],PERIOD=PERIODS[[i]],var_cho,m2,out_dir,m2_rep,models_to_ensemble,m2_eval,mInfo,evaluation);gc()
     
     })
-  }) 
-};
+  })
+
+
+};rm(k)
 
 }else{
   cat("Already projected!","\n")
-}
+  }
+
 ##########################################################
 ###ENSEMBLING APPROACH PER RCP
 ######################################################## 
@@ -294,7 +355,7 @@ source(paste0(src.dir,"/","_ensemble_final.R"))
 for(i in 1:length(RCPs)){
   
   cat("Projecting for: ",as.character(RCPs[[i]]),"\n")
-  
+  GCMS <- GCMS_lists[[i]]
   mclapply2(1:length(PERIODS),function(j){
     
 
@@ -302,8 +363,7 @@ x<-ensemble_RCP_function(mod_Dir,sp_name,sp_Dir_Original,RCP=RCPs[[i]],PERIOD=PE
   })
 };rm(i)
 }else{
-  
-  cat("Already ensembled!","\n")
+cat("Already ensembled!","\n")
 }
 ##########################################################
 ###NO MIGRATION SCENARIO FOR RCP
@@ -372,6 +432,7 @@ x<-maps_function(current_Out_Dir,RCPs,GCMS,PERIODS,sp_name2,countries)
 source(paste0(src.dir,"/","_maps_affected_areas.R"))
 
 x<-maps_function_af_areas(sp_Dir_Original,RCPs,GCMS,PERIODS,sp_name2,countries,current_Out_Dir) 
-}else{
-cat("NO VALID MODELS, FINISHING THE SCRIPT!")
-}
+#TURN ON
+# }else{
+# cat("NO VALID MODELS, FINISHING THE SCRIPT!")
+# }

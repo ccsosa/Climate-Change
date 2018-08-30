@@ -110,7 +110,7 @@ for(i in 1:length(unique(mInfo$method))){
   names(sd1_list[[i]])<-as.character(method)
   esdCpt<-sd1
   esdThr<-esdCpt
-  dumm<-raster(p2m, layer = grep(method,names(p2m)))
+  dumm<-p2m#raster(p2m, layer = grep(method,names(p2m)))
   esdCpt[which(dumm[] < 0.001)] <- NA
   esdThr[which(esdThr[] == 0)] <- NA
   cat("...Calculating ASD15 for: ",as.character(method),"\n")
